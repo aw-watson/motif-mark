@@ -6,7 +6,7 @@ import re
 base_mapping = {"A":"A", "C":"C","G":"G","T":"T",
                 "W":"[AT]","S":"[CG]","M":"[AC]","K":"[GT]",
                 "R":"[AG]","Y":"[CT]","B":"[CGT]","D":"[AGT]",
-                "H":"[ACT]","V":"[ACG]","N":"[AGCT]"}
+                "H":"[ACT]","V":"[ACG]","N":"[AGCT]", "U":"T"}
 
 def oneline_fasta(infile: str, outfile: str):
     """Takes a FASTA file (infile) and puts all sequence lines on one line. Writes the result to outfile"""
@@ -47,8 +47,8 @@ class Sequence:
         self.exon_start:int = 0
         self.exon_end:int = 0
         if seq_match is None:
-            raise ValueError("Innapropriately formatted input: expects a single stretch of uppercase nucleotides \
-                             (denoting an exon) \
+            raise ValueError("Innapropriately formatted reference sequence: expects a single stretch of \
+                             uppercase DNA nucleotides (denoting an exon) \
                              flanked by surrounding intron sequence (in lowercase).")
         else:
             self.exon_start, self.exon_end = seq_match.span(1)
