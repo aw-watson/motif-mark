@@ -3,6 +3,8 @@
 import argparse
 import re
 import os
+import cairo
+import math
 from queue import PriorityQueue
 
 base_mapping = {"A":"A", "C":"C","G":"G","T":"T",
@@ -37,6 +39,34 @@ def regex_maker(motif_seq: str) -> str:
         motif_regex += base_mapping[b]
     return motif_regex
 
+class Canvas:
+    def __init__(self, n_seq:int):
+        self._seq_amt = float(n_seq)
+        self._surface = cairo.ImageSurface(cairo.FORMAT_RGB16_565, 
+                                           2300, 
+                                           50+150*math.ceil(self._seq_amt/2.0))
+        self._cx = cairo.Context(self._surface)
+        #white background
+        self._cx.set_line_width(1)
+        self._cx.set_source_rgba(1,1,1,1)
+        self._cx.rectangle(0,0,2300,50+150*math.ceil(self._seq_amt/2.0))
+        self._cx.fill()
+        self._xoffset = 0
+        self._yoffset = 0
+    def draw_seq(self):
+        #base position (leftmost position we want to draw at)
+        base_position = (100+ self._xoffset*1100, 50 + self._yoffset*150) #(x,y)
+        #draw intron/exon
+
+        #draw motifs
+        #increment offset to draw next sequence
+        if self._xoffset == 0 and self._yoffset == math.ceil(self._seq_amt/2.0):
+            self.y_offset = 0
+            self.x_offset = 1
+        else:
+            self._yoffset += 1
+        raise NotImplementedError
+    
 class _Motif:
     def __init__(self, motif_name:str, motif_start:int, motif_end:int):
         self.name = motif_name
@@ -96,5 +126,6 @@ if __name__ == "__main__":
         for line in f:
             for s in seq_list:
                 s.find_motif(line.strip().upper())
+
 
     raise NotImplementedError()
