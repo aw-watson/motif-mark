@@ -2,6 +2,8 @@
 
 import argparse
 import re
+import os
+from queue import PriorityQueue
 
 base_mapping = {"A":"A", "C":"C","G":"G","T":"T",
                 "W":"[AT]","S":"[CG]","M":"[AC]","K":"[GT]",
@@ -41,28 +43,58 @@ class _Motif:
         self.start = motif_start
         self.end = motif_end
 
+class _Exon:
+    def __init__(self, exon_start:int, exon_end:int):
+        self.start = exon_start
+        self.end = exon_end
+
 class Sequence:
-    def __init__(self, nucleotides:str):
+    def __init__(self, name:str,  nucleotides:str):
+        self.name = name
         seq_match = re.fullmatch("[actg]*([ACTG]+)[actg]*", nucleotides)
-        self.exon_start:int = 0
-        self.exon_end:int = 0
+        self.exon = None
         if seq_match is None:
             raise ValueError("Innapropriately formatted reference sequence: expects a single stretch of \
                              uppercase DNA nucleotides (denoting an exon) \
                              flanked by surrounding intron sequence (in lowercase).")
         else:
-            self.exon_start, self.exon_end = seq_match.span(1)
+            self.exon = _Exon(seq_match.start(1), seq_match.end(1))
         self.sequence:str = nucleotides.upper()
         self.motifs:list[_Motif] = []
-    def find_motif(self, motif_seq:str, motif_name:str):
+    def find_motif(self, motif_seq:str):
         #regex_maker accounts for degenerate nucleotide code
         motif_pattern:str = "(?=(" + regex_maker(motif_seq) + "))"
         #looking for all overlapping matches
         motif_iter = re.finditer(motif_pattern, self.sequence)
         for m in motif_iter:
             #add all matches found to the motifs associated with this sequence
-            self.motifs.append(_Motif(motif_name, m.start(), m.end()))
+            self.motifs.append(_Motif(motif_seq, m.start(1), m.end(1)))
 
+
+def get_args():
+    parser = argparse.ArgumentParser(description = "Find and mark motifs in a given genomic sequence")
+    parser.add_argument("-f", "--fastafile", help="Path to FASTA file containing sequences of interest", required = True)
+    parser.add_argument("-m", "--motifs", help="Path to file of motifs to annotate (supports ambiguous nucleotide notation)", required = True)
+    return parser.parse_args()
 
 if __name__ == "__main__":
+    #Read in arguments
+    args = get_args()
+    #Put sequences of interest on one line
+    temp_filename = "oneline_" + args.fastafile
+    oneline_fasta(args.fastafile, temp_filename)
+    #parse fasta file into sequence objects
+    seq_list:list[Sequence] = []
+    with open(temp_filename, mode = 'rt') as f:
+        for line in f:
+            seq = Sequence(line.strip()[1:], f.readline().strip())
+            seq_list.append(seq)
+    os.remove(temp_filename)
+
+    #Find all motifs in all sequences
+    with open(args.motifs, mode='rt') as f:
+        for line in f:
+            for s in seq_list:
+                s.find_motif(line.strip().upper())
+
     raise NotImplementedError()
