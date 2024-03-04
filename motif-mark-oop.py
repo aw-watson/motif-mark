@@ -135,13 +135,13 @@ class Canvas:
         #start drawing
         #set line size
         self._cx.set_line_width(10)
-        stagger_ctr = 0
+        stagger_ctr:int = 0
         #draw until all motifs are drawn
         while m_todraw.qsize() != 0: #not multithread safe
             m_tostagger:PriorityQueue[tuple[int,_Motif]] = PriorityQueue()
             while m_todraw.qsize() != 0: #run through queue once
                 #get motif with earliest end position
-                m = m_todraw.get()[1]
+                m:_Motif = m_todraw.get()[1]
                 #put all overlapping motifs in m_tostagger
                 while m_todraw.qsize() != 0 and m_todraw.queue[0][1].start < m.end:
                     m_tostagger.put(m_todraw.get())
@@ -158,17 +158,19 @@ class Canvas:
         #legend
         self._cx.set_source_rgba(0,0,0,1)
         self._cx.set_line_width(2)
-        for i, m in enumerate(motifs_present):
+        i:int
+        m_name:str
+        for i, m_name in enumerate(motifs_present):
             legend_pos = [base_position[0] + 50, base_position[1] + 20 + 10*i]
             self._cx.set_source_rgba(0,0,0,1)
             self._cx.rectangle(legend_pos[0],legend_pos[1], 6, 6)
             self._cx.stroke()
-            self._cx.set_source_rgba(*motif_color_map[m])
+            self._cx.set_source_rgba(*motif_color_map[m_name])
             self._cx.rectangle(legend_pos[0], legend_pos[1], 5 ,5)
             self._cx.fill()
             self._cx.set_source_rgba(0,0,0,1)
             self._cx.move_to(legend_pos[0] + 10,legend_pos[1] + 6)
-            self._cx.show_text(f": {m}")
+            self._cx.show_text(f": {m_name}")
 
 
 def get_args():
@@ -181,22 +183,22 @@ if __name__ == "__main__":
     #Read in arguments
     args = get_args()
     #Put sequences of interest on one line
-    temp_filename = "oneline_" + args.fastafile
+    temp_filename:str = "oneline_" + args.fastafile
     oneline_fasta(args.fastafile, temp_filename)
     #parse fasta file into sequence objects
     seq_list:list[Sequence] = []
     with open(temp_filename, mode = 'rt') as f:
         for line in f:
-            seq = Sequence(line.strip()[1:], f.readline().strip())
+            seq:Sequence = Sequence(line.strip()[1:], f.readline().strip())
             seq_list.append(seq)
     os.remove(temp_filename)
 
     #Find all motifs in all sequences
-    n_motifs = 0
-    motif_color_map = {}
+    n_motifs:int = 0
+    motif_color_map:dict[str,tuple[float,float,float,float]] = {}
     with open(args.motifs, mode='rt') as f:
         for line in f:
-            motif = line.strip().upper()
+            motif:str = line.strip().upper()
             if motif not in motif_color_map:
                 motif_color_map[motif] = colors[n_motifs]
                 n_motifs += 1
@@ -209,4 +211,8 @@ if __name__ == "__main__":
         cnv.draw_seq(s)
                 
     #output file
-    cnv.output("testing")
+    prefix:str = "sequences"
+    prefix_match: None | re.Match = re.fullmatch(r"(.*)\.(.*)",args.fastafile)
+    if prefix_match:
+        prefix = prefix_match.group(1)
+    cnv.output(f"{prefix}")
