@@ -5,13 +5,14 @@ import re
 import os
 import cairo
 from queue import PriorityQueue
+from typing import Iterator
 
-base_mapping = {"A":"A", "C":"C","G":"G","T":"T",
+base_mapping:dict[str,str] = {"A":"A", "C":"C","G":"G","T":"T",
                 "W":"[AT]","S":"[CG]","M":"[AC]","K":"[GT]",
                 "R":"[AG]","Y":"[CT]","B":"[CGT]","D":"[AGT]",
                 "H":"[ACT]","V":"[ACG]","N":"[AGCT]", "U":"T"}
 
-colors = [(1,38/255,0,1),
+colors:list[tuple[float,float,float,float]] = [(1,38/255,0,1),
           (1,159/255,0,1),
           (1,221/255,0,1),
           (159/255,180/255,0,1),
@@ -44,26 +45,26 @@ def oneline_fasta(infile: str, outfile: str):
         wf.write(seq)
 
 def regex_maker(motif_seq: str) -> str: 
-    motif_regex = ""
+    motif_regex:str = ""
     for b in motif_seq:
         motif_regex += base_mapping[b]
     return motif_regex
     
 class _Motif:
     def __init__(self, motif_name:str, motif_start:int, motif_end:int):
-        self.name = motif_name
-        self.start = motif_start
-        self.end = motif_end
+        self.name:str = motif_name
+        self.start:int = motif_start
+        self.end:int = motif_end
 
 class _Exon:
     def __init__(self, exon_start:int, exon_end:int):
-        self.start = exon_start
-        self.end = exon_end
+        self.start:int = exon_start
+        self.end:int = exon_end
 
 class Sequence:
     def __init__(self, name:str,  nucleotides:str):
-        self.name = name
-        seq_match = re.fullmatch("[actg]*([ACTG]+)[actg]*", nucleotides)
+        self.name:str = name
+        seq_match: None | re.Match[str] = re.fullmatch("[actg]*([ACTG]+)[actg]*", nucleotides)
         self.exon:_Exon = _Exon(0,0)
         if seq_match is None:
             raise ValueError("Innapropriately formatted reference sequence: expects a single stretch of \
@@ -77,17 +78,17 @@ class Sequence:
         #regex_maker accounts for degenerate nucleotide code
         motif_pattern:str = "(?=(" + regex_maker(motif_seq) + "))"
         #looking for all overlapping matches
-        motif_iter = re.finditer(motif_pattern, self.sequence)
+        motif_iter:Iterator = re.finditer(motif_pattern, self.sequence)
         for m in motif_iter:
             #add all matches found to the motifs associated with this sequence
             self.motifs.append(_Motif(motif_seq, m.start(1), m.end(1)))
 
 class Canvas:
     def __init__(self, n_seq:int):
-        self._surface = cairo.ImageSurface(cairo.FORMAT_RGB16_565, 
+        self._surface:cairo.ImageSurface = cairo.ImageSurface(cairo.FORMAT_RGB16_565, 
                                            1200, 
                                            50+250*n_seq)
-        self._cx = cairo.Context(self._surface)
+        self._cx:cairo.Context = cairo.Context(self._surface)
         #white background
         self._cx.set_line_width(1)
         self._cx.set_source_rgba(1,1,1,1)
@@ -95,12 +96,13 @@ class Canvas:
         self._cx.rectangle(0,0,1200,50+250*n_seq)
         self._cx.fill()
         self._cx.set_source_rgba(0,0,0,1)
-        self._yoffset = 0
+        self._yoffset:int = 0
     def output(self, name:str):
         self._surface.write_to_png(f"{name}.png")
     def draw_seq(self, seq:Sequence):
         #base position (top left corner of the "rectangle" we're drawing our sequence in)
         base_position:list[int] = [100, 50 + self._yoffset*250] #(x,y)
+        #write out sequence name from FASTA header
         self._cx.set_source_rgba(0,0,0,1)
         self._cx.move_to(base_position[0], base_position[1])
         self._cx.show_text(seq.name)
@@ -108,7 +110,7 @@ class Canvas:
         self._cx.move_to(base_position[0], base_position[1]+100) #halfway down the left side
         self._cx.set_line_width(2)
 
-        self._cx.line_to(base_position[0] + len(seq.sequence), base_position[1] + 100) #straight line
+        self._cx.line_to(base_position[0] + len(seq.sequence), base_position[1] + 100) #straight line across
         self._cx.stroke()
         #draw exon
         self._cx.move_to(base_position[0] + seq.exon.start, base_position[1]+100) #halfway down the left side, skip intron bases
@@ -120,16 +122,15 @@ class Canvas:
         #increment offset to draw next sequence
         self._yoffset += 1
     def draw_motifs(self, seq:Sequence, base_position:list[int]):
-        #v1: staggers to account for overlaps
+        #staggers to account for overlaps
 
-        #account for all types of motif present -- for legend-drawing later
+        #setup
         motifs_present:set[str]  = set()
-        #put motifs in priority queue based on earliest end position
         m_todraw:PriorityQueue[tuple[int,_Motif]] = PriorityQueue()
 
         for m in seq.motifs:
-            motifs_present.add(m.name)
-            m_todraw.put((m.end,m))
+            motifs_present.add(m.name) #track all motif types in sequence
+            m_todraw.put((m.end,m)) #place motifs in priority queue based on end position
         
         #start drawing
         #set line size
@@ -137,9 +138,9 @@ class Canvas:
         stagger_ctr = 0
         #draw until all motifs are drawn
         while m_todraw.qsize() != 0: #not multithread safe
-            m_tostagger = PriorityQueue()
+            m_tostagger:PriorityQueue[tuple[int,_Motif]] = PriorityQueue()
             while m_todraw.qsize() != 0: #run through queue once
-                #get motif with earliest end time
+                #get motif with earliest end position
                 m = m_todraw.get()[1]
                 #put all overlapping motifs in m_tostagger
                 while m_todraw.qsize() != 0 and m_todraw.queue[0][1].start < m.end:
@@ -168,8 +169,6 @@ class Canvas:
             self._cx.set_source_rgba(0,0,0,1)
             self._cx.move_to(legend_pos[0] + 10,legend_pos[1] + 6)
             self._cx.show_text(f": {m}")
-
-        #reset 
 
 
 def get_args():
