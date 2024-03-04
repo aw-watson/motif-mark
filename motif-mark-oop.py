@@ -4,7 +4,6 @@ import argparse
 import re
 import os
 import cairo
-import math
 from queue import PriorityQueue
 
 base_mapping = {"A":"A", "C":"C","G":"G","T":"T",
@@ -121,18 +120,42 @@ class Canvas:
         #increment offset to draw next sequence
         self._yoffset += 1
     def draw_motifs(self, seq:Sequence, base_position:list[int]):
-        #v0: no account for overlaps, everything gets drawn over everything
+        #v1: staggers to account for overlaps
+
+        #account for all types of motif present -- for legend-drawing later
         motifs_present:set[str]  = set()
-        self._cx.set_line_width(10)
+        #put motifs in priority queue based on earliest end position
+        m_todraw:PriorityQueue[tuple[int,_Motif]] = PriorityQueue()
+
         for m in seq.motifs:
             motifs_present.add(m.name)
-            self._cx.set_source_rgba(*motif_color_map[m.name])
-            self._cx.move_to(base_position[0] +  m.start,base_position[1] + 100)
-            self._cx.line_to(base_position[0] + m.end + 1, base_position[1] + 100)
-            self._cx.stroke()
-        self._cx.set_source_rgba(0,0,0,1)
+            m_todraw.put((m.end,m))
+        
+        #start drawing
+        #set line size
+        self._cx.set_line_width(10)
+        stagger_ctr = 0
+        #draw until all motifs are drawn
+        while m_todraw.qsize() != 0: #not multithread safe
+            m_tostagger = PriorityQueue()
+            while m_todraw.qsize() != 0: #run through queue once
+                #get motif with earliest end time
+                m = m_todraw.get()[1]
+                #put all overlapping motifs in m_tostagger
+                while m_todraw.qsize() != 0 and m_todraw.queue[0][1].start < m.end:
+                    m_tostagger.put(m_todraw.get())
+                #draw motif
+                self._cx.set_source_rgba(*motif_color_map[m.name])
+                self._cx.move_to(base_position[0] +  m.start,base_position[1] + 100 + 12*stagger_ctr)
+                self._cx.line_to(base_position[0] + m.end + 1, base_position[1] + 100 + 12*stagger_ctr)
+                self._cx.stroke()
+            #add offset
+            stagger_ctr += 1
+            #feed all undrawn motifs back into m_todraw
+            m_todraw = m_tostagger
 
         #legend
+        self._cx.set_source_rgba(0,0,0,1)
         self._cx.set_line_width(2)
         for i, m in enumerate(motifs_present):
             legend_pos = [base_position[0] + 50, base_position[1] + 20 + 10*i]
@@ -188,5 +211,3 @@ if __name__ == "__main__":
                 
     #output file
     cnv.output("testing")
-
-    #raise NotImplementedError()
