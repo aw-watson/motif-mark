@@ -120,16 +120,16 @@ class Canvas:
         #increment offset to draw next sequence
         self._yoffset += 1
     def draw_motifs(self, seq:Sequence, base_position:list[int]):
-        #v1: staggers to account for overlaps
+        #v0.5: staggers to account for overlaps, smallest motifs first
 
         #account for all types of motif present -- for legend-drawing later
         motifs_present:set[str]  = set()
-        #put motifs in priority queue based on earliest end position
-        m_todraw:PriorityQueue[tuple[int,_Motif]] = PriorityQueue()
+        #put motifs in priority queue based on size (with dummy insertion order element to guarantee comparability)
+        m_todraw:PriorityQueue[tuple[int,int,_Motif]] = PriorityQueue()
 
-        for m in seq.motifs:
+        for i,m in enumerate(seq.motifs):
             motifs_present.add(m.name)
-            m_todraw.put((m.end,m))
+            m_todraw.put((m.end - m.start,i,m))
         
         #start drawing
         #set line size
@@ -137,18 +137,23 @@ class Canvas:
         stagger_ctr = 0
         #draw until all motifs are drawn
         while m_todraw.qsize() != 0: #not multithread safe
-            m_tostagger = PriorityQueue()
+            m_tostagger:PriorityQueue[tuple[int,int,_Motif]] = PriorityQueue()
+            taken_ranges:list[tuple[int,int]] = []
             while m_todraw.qsize() != 0: #run through queue once
-                #get motif with earliest end time
-                m = m_todraw.get()[1]
-                #put all overlapping motifs in m_tostagger
-                while m_todraw.qsize() != 0 and m_todraw.queue[0][1].start < m.end:
-                    m_tostagger.put(m_todraw.get())
-                #draw motif
-                self._cx.set_source_rgba(*motif_color_map[m.name])
-                self._cx.move_to(base_position[0] +  m.start,base_position[1] + 100 + 12*stagger_ctr)
-                self._cx.line_to(base_position[0] + m.end + 1, base_position[1] + 100 + 12*stagger_ctr)
-                self._cx.stroke()
+                #get smallest motif
+                m = m_todraw.get()
+                #if it overlaps with any drawn motif, put it in to_stagger, and get the next smallest motif
+                if any((m[2].start < start < m[2].end or m[2].start < end < m[2].end) for (start, end) in taken_ranges):
+                    m_tostagger.put(m)
+                else:
+                    #if it doesn't overlap, we can draw it.
+                    #add the motif's span to the ranges we've drawn in at this offset 
+                    taken_ranges.append((m[2].start,m[2].end))
+                    #draw motif
+                    self._cx.set_source_rgba(*motif_color_map[m[2].name])
+                    self._cx.move_to(base_position[0] +  m[2].start,base_position[1] + 100 + 12*stagger_ctr)
+                    self._cx.line_to(base_position[0] + m[2].end + 1, base_position[1] + 100 + 12*stagger_ctr)
+                    self._cx.stroke()
             #add offset
             stagger_ctr += 1
             #feed all undrawn motifs back into m_todraw
