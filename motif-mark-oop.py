@@ -8,9 +8,9 @@ from queue import PriorityQueue
 from typing import Iterator
 
 base_mapping:dict[str,str] = {"A":"A", "C":"C","G":"G","T":"T",
-                "W":"[AT]","S":"[CG]","M":"[AC]","K":"[GT]",
-                "R":"[AG]","Y":"[CT]","B":"[CGT]","D":"[AGT]",
-                "H":"[ACT]","V":"[ACG]","N":"[AGCT]", "U":"T"}
+                "W":"[AT]","S":"[CG]","M":"[AC]","K":"[GUT]",
+                "R":"[AG]","Y":"[CUT]","B":"[CGUT]","D":"[AGUT]",
+                "H":"[ACUT]","V":"[ACG]","N":"[AGCT]", "U":"[UT]"}
 
 colors:list[tuple[float,float,float,float]] = [(1,38/255,0,1),
           (1,159/255,0,1),
@@ -64,14 +64,10 @@ class _Exon:
 class Sequence:
     def __init__(self, name:str,  nucleotides:str):
         self.name:str = name
-        seq_match: None | re.Match[str] = re.fullmatch("[actg]*([ACTG]+)[actg]*", nucleotides)
-        self.exon:_Exon = _Exon(0,0)
-        if seq_match is None:
-            raise ValueError("Innapropriately formatted reference sequence: expects a single stretch of \
-                             uppercase DNA nucleotides (denoting an exon) \
-                             flanked by surrounding intron sequence (in lowercase).")
-        else:
-            self.exon = _Exon(seq_match.start(1), seq_match.end(1))
+        self.exons:list[_Exon] = []
+        seq_iter:Iterator = re.finditer("[actg]*([ACTG]+)[actg]*", nucleotides)
+        for sm in seq_iter:
+            self.exons.append(_Exon(sm.start(1), sm.end(1)))
         self.sequence:str = nucleotides.upper()
         self.motifs:list[_Motif] = []
     def find_motif(self, motif_seq:str):
@@ -112,11 +108,15 @@ class Canvas:
 
         self._cx.line_to(base_position[0] + len(seq.sequence), base_position[1] + 100) #straight line across
         self._cx.stroke()
-        #draw exon
-        self._cx.move_to(base_position[0] + seq.exon.start, base_position[1]+100) #halfway down the left side, skip intron bases
-        self._cx.set_line_width(10)
-        self._cx.line_to(base_position[0] + seq.exon.end + 1, base_position[1] + 100) #straight line
-        self._cx.stroke()
+        self._cx.move_to(base_position[0] + len(seq.sequence) + 5, base_position[1] + 105)
+        self._cx.show_text(f"{len(seq.sequence)} bp")
+        #draw exons
+        for exon in seq.exons:
+            self._cx.move_to(base_position[0] + exon.start, base_position[1]+100) #halfway down the left side, skip intron bases
+            self._cx.set_line_width(10)
+            self._cx.line_to(base_position[0] + exon.end + 1, base_position[1] + 100) #straight line
+            self._cx.stroke()
+
         #draw motifs
         self.draw_motifs(seq, base_position)
         #increment offset to draw next sequence
@@ -125,12 +125,14 @@ class Canvas:
         #staggers to account for overlaps
 
         #setup
+        insertion_order:int = 0 #to prevent ties
         motifs_present:set[str]  = set()
-        m_todraw:PriorityQueue[tuple[int,_Motif]] = PriorityQueue()
+        m_todraw:PriorityQueue[tuple[int,int,_Motif]] = PriorityQueue()
 
         for m in seq.motifs:
             motifs_present.add(m.name) #track all motif types in sequence
-            m_todraw.put((m.end,m)) #place motifs in priority queue based on end position
+            m_todraw.put((m.end,insertion_order,m)) #place motifs in priority queue based on end position
+            insertion_order += 1
         
         #start drawing
         #set line size
@@ -138,12 +140,12 @@ class Canvas:
         stagger_ctr:int = 0
         #draw until all motifs are drawn
         while m_todraw.qsize() != 0: #not multithread safe
-            m_tostagger:PriorityQueue[tuple[int,_Motif]] = PriorityQueue()
+            m_tostagger:PriorityQueue[tuple[int,int,_Motif]] = PriorityQueue()
             while m_todraw.qsize() != 0: #run through queue once
                 #get motif with earliest end position
-                m:_Motif = m_todraw.get()[1]
+                m:_Motif = m_todraw.get()[2]
                 #put all overlapping motifs in m_tostagger
-                while m_todraw.qsize() != 0 and m_todraw.queue[0][1].start < m.end:
+                while m_todraw.qsize() != 0 and m_todraw.queue[0][2].start < m.end:
                     m_tostagger.put(m_todraw.get())
                 #draw motif
                 self._cx.set_source_rgba(*motif_color_map[m.name])
@@ -199,11 +201,11 @@ if __name__ == "__main__":
     with open(args.motifs, mode='rt') as f:
         for line in f:
             motif:str = line.strip().upper()
-            if motif not in motif_color_map:
+            if motif not in motif_color_map: #is this a new motif? (handles repeats)
                 motif_color_map[motif] = colors[n_motifs]
                 n_motifs += 1
-            for s in seq_list:
-                s.find_motif(motif)
+                for s in seq_list:
+                    s.find_motif(motif)
 
     #draw sequences
     cnv: Canvas = Canvas(len(seq_list))
