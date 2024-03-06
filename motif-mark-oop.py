@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 #André Watson, March 2024
 
+#Given a list of sequences (FASTA format), and a line-by-line list of motifs,
+#Draw all sequences to scale, and annotate all occurrences of each motif
+#Expects sequences to be formatted with lowercase letters denoting intron sequence,
+#and uppercase letters denoting exon sequence.
+#Motifs can use ambiguous nucleotide notation, and all possible matches will be annotated in the final drawing. 
+
 import argparse
 import re
 import os
@@ -54,20 +60,22 @@ def regex_maker(motif_seq: str) -> str:
     return motif_regex
     
 class _Motif:
-    '''Internal class meant to hold the location and name of a detected motif in a nucleic acid sequence.'''
+    '''Internal class meant to hold the location and name of a detected motif in a nucleic acid sequence.
+    Not meaningful outside of a containing Sequence object.'''
     def __init__(self, motif_name:str, motif_start:int, motif_end:int):
         self.name:str = motif_name
         self.start:int = motif_start
         self.end:int = motif_end
 
 class _Exon:
-    '''Internal Class meant to hold the location of an exon in a nucleic acid sequence'''
+    '''Internal class meant to hold the location of an exon in a nucleic acid sequence.
+    Not meaningful outside of a containing Sequence object.'''
     def __init__(self, exon_start:int, exon_end:int):
         self.start:int = exon_start
         self.end:int = exon_end
 
 class Sequence:
-    '''TODO:document'''
+    '''Class holding a single processed record from a FASTA file. Name holds header information, nucleotides holds sequence information'''
     def __init__(self, name:str,  nucleotides:str):
         self.name:str = name
         self.exons:list[_Exon] = []
@@ -87,7 +95,7 @@ class Sequence:
             self.motifs.append(_Motif(motif_seq, m.start(1), m.end(1)))
 
 class Canvas:
-    '''TODO:document'''
+    '''Holds the pycairo surface all sequences and motifs are drawn on.'''
     def __init__(self, n_seq:int):
         self._surface:cairo.ImageSurface = cairo.ImageSurface(cairo.FORMAT_RGB16_565, 
                                            1200, 
@@ -102,10 +110,10 @@ class Canvas:
         self._cx.set_source_rgba(0,0,0,1)
         self._yoffset:int = 0
     def output(self, name:str):
-        '''Writes image to a PNG prefixed with name'''
+        '''Writes the current image represented by the Canvas to a PNG prefixed with name'''
         self._surface.write_to_png(f"{name}.png")
     def draw_seq(self, seq:Sequence):
-        '''TODO:document'''
+        '''Draws a sequence on this instance of a Canvas, offset from previously drawn sequences.'''
         #base position (top left corner of the "rectangle" we're drawing our sequence in)
         base_position:list[int] = [100, 50 + self._yoffset*250] #(x,y)
         #write out sequence name from FASTA header
@@ -128,11 +136,12 @@ class Canvas:
             self._cx.stroke()
 
         #draw motifs
-        self.draw_motifs(seq, base_position)
+        self._draw_motifs(seq, base_position)
         #increment offset to draw next sequence
         self._yoffset += 1
-    def draw_motifs(self, seq:Sequence, base_position:list[int]):
-        '''TODO:document'''
+    def _draw_motifs(self, seq:Sequence, base_position:list[int]):
+        '''Helper method for draw_seq. Handles drawing motif occurrences (staggered for visibility), 
+        as well as a figure legend for each sequence.'''
         #staggers to account for overlaps
 
         #setup
