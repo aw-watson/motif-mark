@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+#André Watson, March 2024
 
 import argparse
 import re
@@ -7,10 +8,10 @@ import cairo
 from queue import PriorityQueue
 from typing import Iterator
 
-base_mapping:dict[str,str] = {"A":"A", "C":"C","G":"G","T":"T",
-                "W":"[AT]","S":"[CG]","M":"[AC]","K":"[GUT]",
+base_mapping:dict[str,str] = {"A":"A", "C":"C","G":"G","T":"[TU]",
+                "W":"[AUT]","S":"[CG]","M":"[AC]","K":"[GUT]",
                 "R":"[AG]","Y":"[CUT]","B":"[CGUT]","D":"[AGUT]",
-                "H":"[ACUT]","V":"[ACG]","N":"[AGCT]", "U":"[UT]"}
+                "H":"[ACUT]","V":"[ACG]","N":"[AGCTU]", "U":"[UT]"} #T synonymous with U to account for mismatched DNA/RNA motifs and sequence files
 
 colors:list[tuple[float,float,float,float]] = [(1,38/255,0,1),
           (1,159/255,0,1),
@@ -24,7 +25,7 @@ colors:list[tuple[float,float,float,float]] = [(1,38/255,0,1),
           (210/255,180/255,140/255,1)]
 
 def oneline_fasta(infile: str, outfile: str):
-    """Takes a FASTA file (infile) and puts all sequence lines on one line. Writes the result to outfile"""
+    '''Takes a FASTA file (infile) and puts all sequence lines on one line. Writes the result to outfile'''
     with open(infile, 'rt') as rf, open(outfile, 'wt') as wf:
         seq: str = ''
         first_record: bool = True
@@ -45,23 +46,28 @@ def oneline_fasta(infile: str, outfile: str):
         wf.write(seq)
 
 def regex_maker(motif_seq: str) -> str: 
+    '''Dynamically generates a regular expression matching any of the possible nucleotide sequences corresponding to motif_seq.
+    Supports ambiguous nucleotide notation in the provided motif.'''
     motif_regex:str = ""
     for b in motif_seq:
         motif_regex += base_mapping[b]
     return motif_regex
     
 class _Motif:
+    '''Internal class meant to hold the location and name of a detected motif in a nucleic acid sequence.'''
     def __init__(self, motif_name:str, motif_start:int, motif_end:int):
         self.name:str = motif_name
         self.start:int = motif_start
         self.end:int = motif_end
 
 class _Exon:
+    '''Internal Class meant to hold the location of an exon in a nucleic acid sequence'''
     def __init__(self, exon_start:int, exon_end:int):
         self.start:int = exon_start
         self.end:int = exon_end
 
 class Sequence:
+    '''TODO:document'''
     def __init__(self, name:str,  nucleotides:str):
         self.name:str = name
         self.exons:list[_Exon] = []
@@ -71,15 +77,17 @@ class Sequence:
         self.sequence:str = nucleotides.upper()
         self.motifs:list[_Motif] = []
     def find_motif(self, motif_seq:str):
+        '''Finds all instances of a motif in a Sequence's base sequence, and adds them to an internal list of motifs'''
         #regex_maker accounts for degenerate nucleotide code
+        #0-length lookahead allows for overlapping matches
         motif_pattern:str = "(?=(" + regex_maker(motif_seq) + "))"
-        #looking for all overlapping matches
         motif_iter:Iterator = re.finditer(motif_pattern, self.sequence)
         for m in motif_iter:
             #add all matches found to the motifs associated with this sequence
             self.motifs.append(_Motif(motif_seq, m.start(1), m.end(1)))
 
 class Canvas:
+    '''TODO:document'''
     def __init__(self, n_seq:int):
         self._surface:cairo.ImageSurface = cairo.ImageSurface(cairo.FORMAT_RGB16_565, 
                                            1200, 
@@ -94,8 +102,10 @@ class Canvas:
         self._cx.set_source_rgba(0,0,0,1)
         self._yoffset:int = 0
     def output(self, name:str):
+        '''Writes image to a PNG prefixed with name'''
         self._surface.write_to_png(f"{name}.png")
     def draw_seq(self, seq:Sequence):
+        '''TODO:document'''
         #base position (top left corner of the "rectangle" we're drawing our sequence in)
         base_position:list[int] = [100, 50 + self._yoffset*250] #(x,y)
         #write out sequence name from FASTA header
@@ -122,12 +132,13 @@ class Canvas:
         #increment offset to draw next sequence
         self._yoffset += 1
     def draw_motifs(self, seq:Sequence, base_position:list[int]):
+        '''TODO:document'''
         #staggers to account for overlaps
 
         #setup
         insertion_order:int = 0 #to prevent ties
         motifs_present:set[str]  = set()
-        m_todraw:PriorityQueue[tuple[int,int,_Motif]] = PriorityQueue()
+        m_todraw:PriorityQueue[tuple[int,int,_Motif]] = PriorityQueue() #in retrospect a sorted list would be sufficient here
 
         for m in seq.motifs:
             motifs_present.add(m.name) #track all motif types in sequence
